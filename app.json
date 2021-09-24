@@ -1,0 +1,15 @@
+{
+    "id": "757c9da2-4ce3-4141-8cca-99773000a466",
+    "version": "0.0.1",
+    "requiredApiVersion": "^1.4.0",
+    "iconFile": "icon.png",
+    "author": {
+        "name": "Murtaza",
+        "homepage": "https://github.com/murtaza98",
+        "support": "https://github.com/murtaza98"
+    },
+    "name": "Dialogflow-Fulfillment-Server",
+    "nameSlug": "dialogflow-fulfillment-server",
+    "classFile": "DialogflowFulfillmentServerApp.ts",
+    "description": "Dialogflow fulfillment server"
+}
