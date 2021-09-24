@@ -1,7 +1,7 @@
 {
     "id": "757c9da2-4ce3-4141-8cca-99773000a466",
     "version": "0.0.1",
-    "requiredApiVersion": "^1.4.0",
+    "requiredApiVersion": "^1.19.0",
     "iconFile": "icon.png",
     "author": {
         "name": "Murtaza",
@@ -11,5 +11,6 @@
     "name": "Dialogflow-Fulfillment-Server",
     "nameSlug": "dialogflow-fulfillment-server",
     "classFile": "DialogflowFulfillmentServerApp.ts",
-    "description": "Dialogflow fulfillment server"
+    "description": "Dialogflow fulfillment server",
+    "implements": []
 }
