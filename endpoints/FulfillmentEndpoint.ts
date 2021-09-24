@@ -1,6 +1,5 @@
-import { HttpStatusCode, IHttp, IModify, IPersistence, IRead } from '@rocket.chat/apps-engine/definition/accessors';
+import { HttpStatusCode, IHttp, ILogger, IModify, IPersistence, IRead } from '@rocket.chat/apps-engine/definition/accessors';
 import { ApiEndpoint, IApiEndpointInfo, IApiRequest, IApiResponse } from '@rocket.chat/apps-engine/definition/api';
-import { CityToDepartmentMap } from '../CityToDepartmentMapping';
 
 export class FulfillmentEndpoint extends ApiEndpoint {
     public path = 'fulfillment';
@@ -29,6 +28,11 @@ export class FulfillmentEndpoint extends ApiEndpoint {
             this.app.getLogger().error('Server url not found');
         }
 
+        const CityToDepartmentMap = await this.getMappingsFromSettings(read, this.app.getLogger());
+        if (!CityToDepartmentMap) {
+            console.log('Error resolving city to department id mapping data from settings')
+        }
+
         const handoverDepartment = CityToDepartmentMap[city];
         if (!handoverDepartment) {
             console.log(`Error! No mapping record found for city ${ city }`);
@@ -54,5 +58,27 @@ export class FulfillmentEndpoint extends ApiEndpoint {
         console.log(`Response from handover endpoint: status=${ response.statusCode } content:${ response.content }`);
 
         return this.success({ fulfillmentMessages: [] });
+    }
+
+    private async getMappingsFromSettings(read: IRead, logger: ILogger) {
+        const rulesString: string = await read.getEnvironmentReader().getSettings().getValueById('City-to-department-id-mapping');
+        if (!rulesString || rulesString.trim().length === 0) {
+            return;
+        }
+
+        const withoutComments: string = rulesString.replace(/\\"|"(?:\\"|[^"])*"|(\/\/.*|\/\*[\s\S]*?\*\/)/g, (m, g) => g ? '' : m);
+        const withoutTrailingComma: string = withoutComments.replace(/\,(?!\s*?[\{\[\"\'\w])/g, (m, g) => g ? '' : m);
+        const escapeBackslash = withoutTrailingComma.replace(/\\/g, '\\\\');
+        try {
+            const mappings = JSON.parse(escapeBackslash);
+            if (!mappings) {
+                return;
+            }
+            return mappings;
+
+        } catch (err) {
+            console.log('Error occurred while parsing the mapping data. Details:', err.message);
+            logger.error('Error occurred while parsing the mapping data. Details:', err.message);
+        }
     }
 }
