@@ -1,5 +1,6 @@
 import { HttpStatusCode, IHttp, ILogger, IModify, IPersistence, IRead } from '@rocket.chat/apps-engine/definition/accessors';
 import { ApiEndpoint, IApiEndpointInfo, IApiRequest, IApiResponse } from '@rocket.chat/apps-engine/definition/api';
+import { addSecondsToDate } from '../lib/Utils';
 
 export class FulfillmentEndpoint extends ApiEndpoint {
     public path = 'fulfillment';
@@ -17,13 +18,13 @@ export class FulfillmentEndpoint extends ApiEndpoint {
 
         switch (displayName) {
             case '1.1 City detected from Name': {
-                return this.processCityDetectedFromNameIntent(read, http, request.content);
+                return this.processCityDetectedFromNameIntent(read, modify, request.content);
             }
             case '1.2.1 Select City from List': {
-                return this.processSelectCityFromListIntent(read, http, request.content);
+                return this.processSelectCityFromListIntent(read, modify, request.content);
             }
             case '1.2.2 Select City from List - fallback': {
-                return this.processSelectCityFromListFallbackIntent(read, http, request.content);
+                return this.processSelectCityFromListFallbackIntent(read, modify, request.content);
             }
             default: {
                 return this.json({ status: HttpStatusCode.BAD_REQUEST, content: { error: 'Invalid Intent' } });
@@ -31,17 +32,10 @@ export class FulfillmentEndpoint extends ApiEndpoint {
         }
     }
 
-    private async processCityDetectedFromNameIntent(read: IRead, http: IHttp, request: any): Promise<IApiResponse> {
-        const { queryResult: { parameters: { city = null } = {} } = {}, session } = request.content || {};
+    private async processCityDetectedFromNameIntent(read: IRead, modify: IModify, request: any): Promise<IApiResponse> {
+        const { queryResult: { parameters: { city = null } = {} } = {}, session, fulfillmentMessages } = request || {};
         if (!city) {
             return this.json({ status: HttpStatusCode.BAD_REQUEST, content: { error: 'Invalid parameters. No name and city param found' } });
-        }
-
-        const serverURL = await read.getEnvironmentReader().getServerSettings().getValueById('Site_Url');
-        if (!serverURL) {
-            console.error('Error: Server url not found');
-            this.app.getLogger().error('Server url not found');
-            return this.json({ status: HttpStatusCode.INTERNAL_SERVER_ERROR, content: { error: 'Internal Error. Invalid ServerUrl setting on server' } });
         }
 
         const CityToDepartmentMap = await this.getMappingsFromSettings(read, this.app.getLogger());
@@ -57,37 +51,15 @@ export class FulfillmentEndpoint extends ApiEndpoint {
             this.json({ status: HttpStatusCode.INTERNAL_SERVER_ERROR, content: { error: `Error! Invalid mapping record found for city ${ city }` } });
         }
 
-        const dialogflowIncomingEndpointPath = `${ serverURL }/api/apps/public/21b7d3ba-031b-41d9-8ff2-fbbfa081ae90/incoming`;
-        console.error(`Request url for handover: ${ dialogflowIncomingEndpointPath }`);
-        this.app.getLogger().debug(`Request url for handover: ${ dialogflowIncomingEndpointPath }`);
-        const handoverRequestPayload = {
-            action: 'handover',
-            sessionId: session.split('/')[session.split('/').length - 1],
-            actionData: {
-                targetDepartment: mapping.departmentId,
-            },
-        };
-        this.app.getLogger().debug(`Request payload for handover: ${ JSON.stringify(handoverRequestPayload) }`);
-        console.error(`Request payload for handover: ${ JSON.stringify(handoverRequestPayload) }`);
+        await modify.getScheduler().scheduleOnce({ id: 'DepartmentTransferJob', when: addSecondsToDate(new Date(), 2), data: { session, departmentId: mapping.departmentId } });
 
-        const response = await http.post(dialogflowIncomingEndpointPath, { headers: { 'Content-Type': 'application/json' }, data: handoverRequestPayload } );
-        this.app.getLogger().debug(`Response from handover endpoint: status=${ response.statusCode } content:${ response.content }`);
-        console.error(`Response from handover endpoint: status=${ response.statusCode } content:${ response.content }`);
-
-        return this.success({ fulfillmentMessages: [] });
+        return this.success({ fulfillmentMessages });
     }
 
-    private async processSelectCityFromListIntent(read: IRead, http: IHttp, request: any): Promise<IApiResponse> {
-        const { queryResult: { parameters: { cityNumber: optionNumber = null } = {} } = {}, session } = request.content || {};
+    private async processSelectCityFromListIntent(read: IRead, modify: IModify, request: any): Promise<IApiResponse> {
+        const { queryResult: { parameters: { optionNumber = null } = {} } = {}, session, fulfillmentMessages } = request || {};
         if (!optionNumber) {
-            return this.json({ status: HttpStatusCode.BAD_REQUEST, content: { error: 'Invalid parameters. No cityNumber param found' } });
-        }
-
-        const serverURL = await read.getEnvironmentReader().getServerSettings().getValueById('Site_Url');
-        if (!serverURL) {
-            console.error('Error: Server url not found');
-            this.app.getLogger().error('Server url not found');
-            return this.json({ status: HttpStatusCode.INTERNAL_SERVER_ERROR, content: { error: 'Internal Error. Invalid ServerUrl setting on server' } });
+            return this.json({ status: HttpStatusCode.BAD_REQUEST, content: { error: 'Invalid parameters. No optionNumber param found' } });
         }
 
         const CityToDepartmentMap: {
@@ -104,7 +76,6 @@ export class FulfillmentEndpoint extends ApiEndpoint {
 
         const mapping = this.resolveCityInfoFromOptionNumber(CityToDepartmentMap, optionNumber);
         if (!mapping || !mapping.optionNumber) {
-            // TODO: Need to handle this somehow -
             // https://cloud.google.com/dialogflow/es/docs/events-custom#webhook
             // https://cloud.google.com/dialogflow/es/docs/fulfillment-webhook#event
             console.error(`Error! No mapping record found for optionNumber ${ optionNumber }`);
@@ -116,35 +87,13 @@ export class FulfillmentEndpoint extends ApiEndpoint {
             });
         }
 
-        const dialogflowIncomingEndpointPath = `${ serverURL }/api/apps/public/21b7d3ba-031b-41d9-8ff2-fbbfa081ae90/incoming`;
-        console.error(`Request url for handover: ${ dialogflowIncomingEndpointPath }`);
-        this.app.getLogger().debug(`Request url for handover: ${ dialogflowIncomingEndpointPath }`);
-        const handoverRequestPayload = {
-            action: 'handover',
-            sessionId: session.split('/')[session.split('/').length - 1],
-            actionData: {
-                targetDepartment: mapping.optionNumber,
-            },
-        };
-        this.app.getLogger().debug(`Request payload for handover: ${ JSON.stringify(handoverRequestPayload) }`);
-        console.error(`Request payload for handover: ${ JSON.stringify(handoverRequestPayload) }`);
+        await modify.getScheduler().scheduleOnce({ id: 'DepartmentTransferJob', when: addSecondsToDate(new Date(), 2), data: { session, departmentId: mapping.departmentId } });
 
-        const response = await http.post(dialogflowIncomingEndpointPath, { headers: { 'Content-Type': 'application/json' }, data: handoverRequestPayload } );
-        this.app.getLogger().debug(`Response from handover endpoint: status=${ response.statusCode } content:${ response.content }`);
-        console.error(`Response from handover endpoint: status=${ response.statusCode } content:${ response.content }`);
-
-        return this.success({ fulfillmentMessages: [] });
+        return this.success({ fulfillmentMessages });
     }
 
-    private async processSelectCityFromListFallbackIntent(read: IRead, http: IHttp, request: any): Promise<IApiResponse> {
-        const { session } = request.content || {};
-
-        const serverURL = await read.getEnvironmentReader().getServerSettings().getValueById('Site_Url');
-        if (!serverURL) {
-            console.error('Error: Server url not found');
-            this.app.getLogger().error('Server url not found');
-            return this.json({ status: HttpStatusCode.INTERNAL_SERVER_ERROR, content: { error: 'Internal Error. Invalid ServerUrl setting on server' } });
-        }
+    private async processSelectCityFromListFallbackIntent(read: IRead, modify: IModify, request: any): Promise<IApiResponse> {
+        const { session, fulfillmentMessages } = request || {};
 
         const defaultDepartment: string | undefined = await read.getEnvironmentReader().getSettings().getValueById('Default-Handover-department');
         if (!defaultDepartment || !defaultDepartment.length) {
@@ -153,24 +102,9 @@ export class FulfillmentEndpoint extends ApiEndpoint {
             this.json({ status: HttpStatusCode.INTERNAL_SERVER_ERROR, content: { error: `Error! Empty Default department setting` } });
         }
 
-        const dialogflowIncomingEndpointPath = `${ serverURL }/api/apps/public/21b7d3ba-031b-41d9-8ff2-fbbfa081ae90/incoming`;
-        console.error(`Request url for handover: ${ dialogflowIncomingEndpointPath }`);
-        this.app.getLogger().debug(`Request url for handover: ${ dialogflowIncomingEndpointPath }`);
-        const handoverRequestPayload = {
-            action: 'handover',
-            sessionId: session.split('/')[session.split('/').length - 1],
-            actionData: {
-                targetDepartment: defaultDepartment,
-            },
-        };
-        this.app.getLogger().debug(`Request payload for handover: ${ JSON.stringify(handoverRequestPayload) }`);
-        console.error(`Request payload for handover: ${ JSON.stringify(handoverRequestPayload) }`);
+        await modify.getScheduler().scheduleOnce({ id: 'DepartmentTransferJob', when: addSecondsToDate(new Date(), 2), data: { session, departmentId: defaultDepartment } });
 
-        const response = await http.post(dialogflowIncomingEndpointPath, { headers: { 'Content-Type': 'application/json' }, data: handoverRequestPayload } );
-        this.app.getLogger().debug(`Response from handover endpoint: status=${ response.statusCode } content:${ response.content }`);
-        console.error(`Response from handover endpoint: status=${ response.statusCode } content:${ response.content }`);
-
-        return this.success({ fulfillmentMessages: [] });
+        return this.success({ fulfillmentMessages });
     }
 
     // tslint:disable-next-line: max-line-length

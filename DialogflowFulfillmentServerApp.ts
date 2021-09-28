@@ -8,6 +8,7 @@ import { App } from '@rocket.chat/apps-engine/definition/App';
 import { IAppInfo } from '@rocket.chat/apps-engine/definition/metadata';
 import { SettingType } from '@rocket.chat/apps-engine/definition/settings';
 import { FulfillmentEndpoint } from './endpoints/FulfillmentEndpoint';
+import { DepartmentTransferJob } from './jobs/DepartmentTransferJob';
 
 const initialSettingValue = `{
     "Gaspar": "tSTWZZELDmdGJovPm",
@@ -46,5 +47,9 @@ export class DialogflowFulfillmentServerApp extends App {
             i18nLabel: 'City to Department ID mapping',
             required: true,
         });
+
+        await configuration.scheduler.registerProcessors([
+            new DepartmentTransferJob(this).getDepartmentTransferJob(),
+        ]);
     }
 }
