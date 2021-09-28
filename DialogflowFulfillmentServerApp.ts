@@ -28,6 +28,16 @@ export class DialogflowFulfillmentServerApp extends App {
         });
 
         configuration.settings.provideSetting({
+            id: 'Default-Handover-department',
+            public: true,
+            type: SettingType.STRING,
+            packageValue: '',
+            value: '',
+            i18nLabel: 'Default Handover Department',
+            required: true,
+        });
+
+        configuration.settings.provideSetting({
             id: 'City-to-department-id-mapping',
             public: true,
             type: SettingType.CODE,

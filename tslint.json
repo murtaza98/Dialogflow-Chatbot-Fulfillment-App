@@ -8,7 +8,7 @@
       "object-literal-sort-keys": false,
       "quotemark": [true, "single"],
       "max-line-length": [true, {
-          "limit": 160,
+          "limit": 300,
           "ignore-pattern": "^import | *export .*? {"
       }]
     }
